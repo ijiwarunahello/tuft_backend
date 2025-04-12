@@ -19,5 +19,9 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>音声入力のためにマイクにアクセスする必要があります</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>音声認識でテキストに変換するために使用します</string>
 </dict>
 </plist>
