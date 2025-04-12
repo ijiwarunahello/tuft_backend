@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from typing import Annotated, Optional
+from typing import Annotated, Dict, Any, Optional
 
 from langchain_core.runnables import RunnableConfig, ensure_config
 
@@ -34,6 +34,14 @@ class Configuration:
         default=10,
         metadata={
             "description": "The maximum number of search results to return for each search query."
+        },
+    )
+
+    response_model_extras: Dict[str, Any] = field(
+        default_factory=dict,
+        metadata={
+            "description": "Extra fields to add to the JSON response model when not present. "
+            "These fields will be added to the JSON response if they don't already exist."
         },
     )
 

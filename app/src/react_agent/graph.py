@@ -4,7 +4,9 @@ Works with a chat model with tool calling support.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, cast
+import json
+import re
+from typing import Dict, List, Literal, Optional, cast, Any
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -62,8 +64,92 @@ async def call_model(
             ]
         }
 
-    # Return the model's response as a list to be added to existing messages
-    return {"messages": [response]}
+    # Process JSON response and add custom fields if needed
+    processed_response = process_response(response, configuration.response_model_extras)
+
+    # Return the processed response as a list to be added to existing messages
+    return {"messages": [processed_response]}
+
+
+def process_response(
+    response: AIMessage, extra_fields: Optional[Dict[str, Any]] = None
+) -> AIMessage:
+    """Process the model's response to ensure it's in the correct JSON format.
+
+    This function:
+    1. Checks if the response content contains valid JSON
+    2. Extracts the JSON data if present
+    3. Adds any additional custom fields to the JSON data
+    4. Recreates the AIMessage with the processed content
+
+    Args:
+        response (AIMessage): The original model response
+        extra_fields (Dict[str, Any], optional): Additional fields to add to the JSON
+
+    Returns:
+        AIMessage: A new AIMessage with the processed content
+    """
+    content = response.content
+    if content is None or response.tool_calls:
+        # If using tools or has no content, return as is
+        return response
+
+    # Try to extract JSON from the response
+    json_data = None
+    try:
+        # First attempt: Try to parse the entire content as JSON
+        json_data = json.loads(content)
+    except json.JSONDecodeError:
+        # Second attempt: Try to extract JSON using regex
+        json_match = re.search(r"```(?:json)?\s*({.*?})\s*```", content, re.DOTALL)
+        if json_match:
+            try:
+                json_data = json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+    if json_data and isinstance(json_data, dict):
+        # 会話内容を取り出す
+        message_content = json_data.get("content", "")
+        emotion = json_data.get("emotion", "normal")
+
+        # 会話内容を除外した新しいメタデータ辞書を作成
+        metadata = {}
+        for key, value in json_data.items():
+            if key not in ["content"]:  # emotionは含める
+                metadata[key] = value
+
+        # Add custom fields if provided
+        if extra_fields:
+            for key, value in extra_fields.items():
+                if key not in metadata:
+                    # 特殊値「auto」の場合は自動的に値を生成
+                    if value == "auto":
+                        if key == "timestamp":
+                            metadata[key] = datetime.now(tz=timezone.utc).isoformat()
+                        elif key == "id":
+                            metadata[key] = f"msg_{int(datetime.now().timestamp())}"
+                        elif key == "date":
+                            metadata[key] = datetime.now().strftime("%Y-%m-%d")
+                        elif key == "time":
+                            metadata[key] = datetime.now().strftime("%H:%M:%S")
+                        else:
+                            # 未知の自動フィールドの場合はそのまま「auto」を設定
+                            metadata[key] = value
+                    else:
+                        # 通常の値はそのまま設定
+                        metadata[key] = value
+
+        # AIMessageを新しく作成
+        return AIMessage(
+            id=response.id,
+            content=message_content,  # contentには会話内容のみを設定
+            additional_kwargs={"json_data": metadata},  # メタデータのみjson_dataに設定
+            tool_calls=response.tool_calls,
+        )
+
+    # If no valid JSON was found, return the original response
+    return response
 
 
 # Define a new graph
