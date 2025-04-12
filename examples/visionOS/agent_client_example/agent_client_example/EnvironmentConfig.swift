@@ -5,7 +5,7 @@ import Foundation
 struct EnvironmentConfig {
     static var baseURL: String {
         #if targetEnvironment(simulator)
-        return "http://192.168.179.6:2024"  // Simulator用
+        return "http://127.0.0.1:2024"  // Simulator用
         #else
         return UserDefaults.standard.string(forKey: "server_url") ?? "https://loyal-stinkbug-just.ngrok-free.app"  // 実機用（デフォルトIP）
         #endif
