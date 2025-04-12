@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Speech
+import AVFoundation
 
 struct ChatMessage: Identifiable {
     let id = UUID()
@@ -104,11 +105,35 @@ final class SpeechAnalyzer: NSObject, ObservableObject, SFSpeechRecognizerDelega
     }
 }
 
+// TextToSpeechクラスの追加
+class TextToSpeech: ObservableObject {
+    let speechSynthesizer = AVSpeechSynthesizer()
+    
+    func speak(text: String, language: String = "ja-JP") {
+        guard let voice = AVSpeechSynthesisVoice(language: language) else { return }
+        
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
+        utterance.rate = 0.5
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        
+        speechSynthesizer.speak(utterance)
+    }
+    
+    func stopSpeaking() {
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+    }
+}
+
 struct ChatView: View {
     @State private var inputText: String = ""
     @State private var messages: [ChatMessage] = []
     @State private var threadId: String? = nil
     @StateObject private var speechAnalyzer = SpeechAnalyzer()
+    @StateObject private var textToSpeech = TextToSpeech()
     
     private let buttonSize: CGFloat = 44
     
@@ -126,10 +151,23 @@ struct ChatView: View {
                                     .cornerRadius(8)
                             } else {
                                 VStack(alignment: .leading) {
-                                    Text(message.content + (message.emotion != nil ? " [\(message.emotion!)]" : ""))
-                                        .padding(12)
-                                        .background(Color.gray.opacity(0.2))
-                                        .cornerRadius(8)
+                                    HStack {
+                                        Text(message.content + (message.emotion != nil ? " [\(message.emotion!)]" : ""))
+                                            .padding(12)
+                                            .background(Color.gray.opacity(0.2))
+                                            .cornerRadius(8)
+                                        
+                                        // 音声合成ボタン追加
+                                        Button(action: {
+                                            textToSpeech.speak(text: message.content)
+                                        }) {
+                                            Image(systemName: "speaker.wave.2.fill")
+                                                .resizable()
+                                                .frame(width: 20, height: 20)
+                                                .foregroundColor(.blue)
+                                        }
+                                        .padding(.leading, 4)
+                                    }
                                     
                                     if let metadata = message.metadata, !metadata.isEmpty {
                                         HStack {
@@ -377,12 +415,16 @@ struct ChatView: View {
                 
                 // メインスレッドでUIを更新
                 DispatchQueue.main.async {
-                    self.messages.append(ChatMessage(
+                    let chatMessage = ChatMessage(
                         role: "assistant",
                         content: content,
                         emotion: emotion,
                         metadata: metadata
-                    ))
+                    )
+                    self.messages.append(chatMessage)
+                    
+                    // 自動的に応答を読み上げる
+                    self.textToSpeech.speak(text: content)
                 }
             } catch {
                 print("Error parsing response: \(error)")
